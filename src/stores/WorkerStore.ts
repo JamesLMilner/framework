@@ -47,8 +47,6 @@ interface WorkerResult {
 
 let state = {};
 
-console.log('HELLO WORLD 1');
-
 function apply(operations: PatchOperation[]): PatchOperation[] {
 	const patch = new Patch(operations);
 	const patchResult = patch.apply(state);
@@ -57,18 +55,14 @@ function apply(operations: PatchOperation[]): PatchOperation[] {
 }
 
 function get(path: string | string[]) {
-	console.log('path in get', path);
 	const pointer = new Pointer(path);
 	return pointer.get(state);
 }
 
 onmessage = (event) => {
-	console.log('event', event.data);
 	const { type, id, payload } = event.data;
 	if (type === 'get') {
-		console.log('get PAyload', payload, 'state', state);
 		const result: WorkerResult = { id, result: get(payload) };
-		console.log('posting get', result);
 		(postMessage as any)(result);
 	} else if (type === 'apply') {
 		const operations = payload.map((operation: any) => {
@@ -77,7 +71,6 @@ onmessage = (event) => {
 		});
 		const undos = apply(operations);
 		const result: WorkerResult = { id, result: undos };
-		console.log('posting apply', result);
 		(postMessage as any)(result);
 	}
 };
@@ -142,8 +135,6 @@ class Pointer<T = any, U = any> {
 	private readonly _segments: string[];
 
 	constructor(segments: string | string[]) {
-		console.log('Pointer', segments);
-
 		if (Array.isArray(segments)) {
 			this._segments = segments;
 		} else {
@@ -195,7 +186,6 @@ function add(pointerTarget: PointerTarget, value: any): any {
 }
 
 function replace(pointerTarget: PointerTarget, value: any): any {
-	console.log('replace', pointerTarget, value);
 	if (Array.isArray(pointerTarget.target)) {
 		pointerTarget.target.splice(parseInt(pointerTarget.segment, 10), 1, value);
 	} else {
@@ -295,7 +285,6 @@ class Patch<T = any> {
 					object = add(pointerTarget, next.value);
 					break;
 				case 'replace':
-					console.log('replace', pointerTarget);
 					object = replace(pointerTarget, next.value);
 					break;
 				case 'remove':

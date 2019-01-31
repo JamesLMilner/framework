@@ -228,11 +228,10 @@ export class WorkerStore<T = any> extends Evented implements AsyncState<T> {
 	private _messageQueue: any;
 
 	private _changePaths = new Map<string, OnChangeValue>();
-	// private _callbackId = 0;
+	private _callbackId = 0;
 
 	constructor() {
 		super();
-		console.log('building WorkerStore');
 		this._messageId = 0;
 		this._messageQueue = {};
 		this._worker = this._createWorker();
@@ -250,12 +249,17 @@ export class WorkerStore<T = any> extends Evented implements AsyncState<T> {
 	}
 
 	private _getState() {
-		// The top level object is the state
-		this.get(this.path('/' as keyof T));
+		// The top level object is the state. Not using this.path as it will fail
+		// at the top level
+		return this.get({
+			path: '/',
+			state: {} as T,
+			value: [] as any
+		});
 	}
 
 	private _createWorker() {
-		return new Worker('/dist/release/stores/WorkerStore.js');
+		return new Worker('/dist/umd/src/stores/WorkerStore.js');
 	}
 
 	private _getResult() {
@@ -265,14 +269,39 @@ export class WorkerStore<T = any> extends Evented implements AsyncState<T> {
 		});
 	}
 
-	// private _addOnChange = <U = any>(path: Path<T, U>, callback: () => void, callbackId: number): void => {
-	// 	let changePaths = this._changePaths.get(path.path);
-	// 	if (!changePaths) {
-	// 		changePaths = { callbacks: [], previousValue: this.get(path) };
-	// 	}
-	// 	changePaths.callbacks.push({ callbackId, callback });
-	// 	this._changePaths.set(path.path, changePaths);
-	// };
+	public onChange = <U = any>(paths: Path<T, U> | Path<T, U>[], callback: () => void) => {
+		const callbackId = this._callbackId;
+		if (!Array.isArray(paths)) {
+			paths = [paths];
+		}
+		paths.forEach((path) => this._addOnChange(path, callback, callbackId));
+		this._callbackId += 1;
+		return {
+			remove: () => {
+				(paths as Path<T, U>[]).forEach((path) => {
+					const onChange = this._changePaths.get(path.path);
+					if (onChange) {
+						onChange.callbacks = onChange.callbacks.filter((callback) => {
+							return callback.callbackId !== callbackId;
+						});
+					}
+				});
+			}
+		};
+	};
+
+	private _addOnChange = async <U = any>(
+		path: Path<T, U>,
+		callback: () => void,
+		callbackId: number
+	): Promise<void> => {
+		let changePaths = this._changePaths.get(path.path);
+		if (!changePaths) {
+			changePaths = { callbacks: [], previousValue: await this.get(path) };
+		}
+		changePaths.callbacks.push({ callbackId, callback });
+		this._changePaths.set(path.path, changePaths);
+	};
 
 	private _runOnChanges() {
 		const callbackIdsCalled: number[] = [];
@@ -297,6 +326,7 @@ export class WorkerStore<T = any> extends Evented implements AsyncState<T> {
 	 * Emits an invalidation event
 	 */
 	public async invalidate() {
+		console.log('invalidate');
 		await this._runOnChanges();
 		this.emit({ type: 'invalidate' });
 	}
