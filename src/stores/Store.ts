@@ -218,45 +218,124 @@ export class Store<T = any> extends Evented implements State<T> {
 
 export interface AsyncState<M> {
 	get<S>(path: Path<M, S>): Promise<S>;
-	at<S extends Path<M, Array<any>>>(path: S, index: number): Promise<Path<M, S['value'][0]>>;
+	// at<S extends Path<M, Array<any>>>(path: S, index: number): Path<M, S['value'][0]>;
 	path: StatePaths<M>;
 }
 
-export class WorkerStore<T = any> implements AsyncState<T> {
+export class WorkerStore<T = any> extends Evented implements AsyncState<T> {
 	private _worker: Worker;
 	private _messageId: number;
 	private _messageQueue: any;
 
+	private _changePaths = new Map<string, OnChangeValue>();
+	// private _callbackId = 0;
+
 	constructor() {
+		super();
+		console.log('building WorkerStore');
 		this._messageId = 0;
 		this._messageQueue = {};
-		this._worker = this.createWorker();
-		this._worker.onmessage = (message: any) => {
-			if (this._messageQueue[message.id]) {
-				this._messageQueue[message.id].resolve(message);
-				delete this._messageQueue[message.id];
+		this._worker = this._createWorker();
+		this._worker.onmessage = (message) => {
+			const data = message.data;
+			const id = data.id;
+			const resolve = this._messageQueue[id];
+			if (resolve) {
+				resolve(data.result);
+				delete this._messageQueue[id];
+			} else {
+				console.warn('No promise found for worker message with id', id);
 			}
 		};
 	}
 
-	public get = async <U = any>(path: Path<T, U>): Promise<U> => {
+	private _getState() {
+		// The top level object is the state
+		this.get(this.path('/' as keyof T));
+	}
+
+	private _createWorker() {
+		return new Worker('/dist/release/stores/WorkerStore.js');
+	}
+
+	private _getResult() {
 		this._messageId++;
-		const promise = new Promise((resolve) => {
+		return new Promise((resolve) => {
 			this._messageQueue[this._messageId] = resolve;
 		});
-		this._worker.postMessage([{ action: 'get', args: path }]);
-		return (await promise) as U;
+	}
+
+	// private _addOnChange = <U = any>(path: Path<T, U>, callback: () => void, callbackId: number): void => {
+	// 	let changePaths = this._changePaths.get(path.path);
+	// 	if (!changePaths) {
+	// 		changePaths = { callbacks: [], previousValue: this.get(path) };
+	// 	}
+	// 	changePaths.callbacks.push({ callbackId, callback });
+	// 	this._changePaths.set(path.path, changePaths);
+	// };
+
+	private _runOnChanges() {
+		const callbackIdsCalled: number[] = [];
+		this._changePaths.forEach(async (value: OnChangeValue, path: string) => {
+			const { previousValue, callbacks } = value;
+			const currentState = await this._getState();
+			const newValue = new Pointer(path).get(currentState);
+			if (previousValue !== newValue) {
+				this._changePaths.set(path, { callbacks, previousValue: newValue });
+				callbacks.forEach((callbackItem) => {
+					const { callback, callbackId } = callbackItem;
+					if (callbackIdsCalled.indexOf(callbackId) === -1) {
+						callbackIdsCalled.push(callbackId);
+						callback();
+					}
+				});
+			}
+		});
+	}
+
+	/**
+	 * Emits an invalidation event
+	 */
+	public async invalidate() {
+		await this._runOnChanges();
+		this.emit({ type: 'invalidate' });
+	}
+
+	public get = async <U = any>(path: Path<T, U>): Promise<U> => {
+		const result = this._getResult();
+
+		this._worker.postMessage({
+			id: this._messageId,
+			type: 'get',
+			payload: path.path // We just need the string
+		});
+		return (await result) as U;
 	};
 
 	public apply = async (
 		operations: PatchOperation<T>[],
 		invalidate: boolean = false
 	): Promise<PatchOperation<T>[]> => {
-		return Promise.resolve({} as PatchOperation<T, any>[]);
-	};
+		const result = this._getResult();
 
-	public at = async <U = any>(path: Path<T, Array<U>>, index: number): Promise<Path<T, U>> => {
-		return Promise.resolve({} as Path<T, U>);
+		// Transfering complex objects across worker boundaries doesn't work well,
+		// so instead we just transfer a string
+		const payload = operations.map((op) => {
+			return { ...op, path: op.path.path };
+		});
+
+		this._worker.postMessage({
+			id: this._messageId,
+			type: 'apply',
+			payload
+		});
+
+		return result.then(async (patchResult) => {
+			if (invalidate) {
+				await this.invalidate();
+			}
+			return patchResult as any;
+		});
 	};
 
 	public path: State<T>['path'] = (path: string | Path<T, any>, ...segments: (string | undefined)[]) => {
@@ -272,14 +351,10 @@ export class WorkerStore<T = any> implements AsyncState<T> {
 
 		return {
 			path: pointer.path,
-			state: {} as T,
-			value: pointer.get({} as T)
+			state: {} as T, // TODO: Do we need these in a worker store?
+			value: [] as any
 		};
 	};
-
-	private createWorker() {
-		return new Worker('/dist/worker/src/stores/WorkerStore.js');
-	}
 }
 
 export default Store;

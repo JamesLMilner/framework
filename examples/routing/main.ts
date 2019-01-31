@@ -10,12 +10,34 @@ import { App as BasicApp, BasicAppRouteConfig } from './basic';
 import { App as UrlParametersApp, UrlParametersRouteConfig } from './url-parameters';
 import { App as AmbiguousMatchesApp, AmbiguousMatchesRouteConfig } from './ambigious-matches';
 import { Outlet } from '@dojo/framework/routing/Outlet';
+import { Pointer } from '@dojo/framework/stores/state/Pointer';
 
 import { WorkerStore } from '@dojo/framework/stores/Store';
+import { OperationType } from '@dojo/framework/stores/state/Patch';
 
-const workerStore = new WorkerStore();
+(() => {
+	const workerStore = new WorkerStore();
+	(async () => {
+		console.log('Worker Store', workerStore);
 
-console.log('Worker Store', workerStore.get('/'));
+		const apply = workerStore.apply([
+			{
+				op: OperationType.REPLACE,
+				path: new Pointer('/test'),
+				value: 'test'
+			}
+		]);
+		console.log('before await');
+		const applyValue = await apply;
+		console.log('Worker Store apply return', applyValue);
+		console.assert(Array.isArray(applyValue));
+
+		console.log('Worker Store get');
+		const getValue = await workerStore.get(workerStore.path('/test'));
+		console.log('getValue', getValue);
+		console.assert(getValue === 'test');
+	})();
+})();
 
 const applicationRoutes: RouteConfig[] = [BasicAppRouteConfig, UrlParametersRouteConfig, AmbiguousMatchesRouteConfig];
 

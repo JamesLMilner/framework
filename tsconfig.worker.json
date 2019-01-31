@@ -10,7 +10,7 @@
 		],
 		"importHelpers": false,
 		"target": "es5",
-		"outDir": "./dist/worker/src"
+		"outDir": "./dist/worker/src/stores"
 	},
 	"files": [
 		"./src/stores/WorkerStore.ts"
