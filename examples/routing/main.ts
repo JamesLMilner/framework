@@ -11,6 +11,12 @@ import { App as UrlParametersApp, UrlParametersRouteConfig } from './url-paramet
 import { App as AmbiguousMatchesApp, AmbiguousMatchesRouteConfig } from './ambigious-matches';
 import { Outlet } from '@dojo/framework/routing/Outlet';
 
+import { WorkerStore } from '@dojo/framework/stores/Store';
+
+const workerStore = new WorkerStore();
+
+console.log('Worker Store', workerStore.get('/'));
+
 const applicationRoutes: RouteConfig[] = [BasicAppRouteConfig, UrlParametersRouteConfig, AmbiguousMatchesRouteConfig];
 
 const registry = new Registry();

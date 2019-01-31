@@ -1,0 +1,19 @@
+{
+	"compilerOptions": {
+		"moduleResolution": "node",
+		"downlevelIteration": true,
+		"module": "umd",
+		"lib": [
+			"dom",
+			"es6",
+			"scripthost"
+		],
+		"importHelpers": false,
+		"target": "es5",
+		"outDir": "./dist/worker/src"
+	},
+	"files": [
+		"./src/stores/WorkerStore.ts"
+	],
+	
+}

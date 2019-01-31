@@ -13,6 +13,7 @@
     "build:static:dev": "cpx \"{src,tests}/**/*.{html,png,jpg,gif,json,xml,css,txt,d.ts}\" dist/dev",
     "build:static:release": "cpx \"src/**/*.d.ts\" dist/release",
     "build:umd": "tsc",
+    "build:worker": "tsc -p tsconfig.worker.json",
     "build": "npm-run-all -p build:** -s dojo-package",
     "clean": "rimraf dist dist-examples coverage benchmark-results",
     "dojo-package": "dojo-package",

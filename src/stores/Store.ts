@@ -216,4 +216,70 @@ export class Store<T = any> extends Evented implements State<T> {
 	};
 }
 
+export interface AsyncState<M> {
+	get<S>(path: Path<M, S>): Promise<S>;
+	at<S extends Path<M, Array<any>>>(path: S, index: number): Promise<Path<M, S['value'][0]>>;
+	path: StatePaths<M>;
+}
+
+export class WorkerStore<T = any> implements AsyncState<T> {
+	private _worker: Worker;
+	private _messageId: number;
+	private _messageQueue: any;
+
+	constructor() {
+		this._messageId = 0;
+		this._messageQueue = {};
+		this._worker = this.createWorker();
+		this._worker.onmessage = (message: any) => {
+			if (this._messageQueue[message.id]) {
+				this._messageQueue[message.id].resolve(message);
+				delete this._messageQueue[message.id];
+			}
+		};
+	}
+
+	public get = async <U = any>(path: Path<T, U>): Promise<U> => {
+		this._messageId++;
+		const promise = new Promise((resolve) => {
+			this._messageQueue[this._messageId] = resolve;
+		});
+		this._worker.postMessage([{ action: 'get', args: path }]);
+		return (await promise) as U;
+	};
+
+	public apply = async (
+		operations: PatchOperation<T>[],
+		invalidate: boolean = false
+	): Promise<PatchOperation<T>[]> => {
+		return Promise.resolve({} as PatchOperation<T, any>[]);
+	};
+
+	public at = async <U = any>(path: Path<T, Array<U>>, index: number): Promise<Path<T, U>> => {
+		return Promise.resolve({} as Path<T, U>);
+	};
+
+	public path: State<T>['path'] = (path: string | Path<T, any>, ...segments: (string | undefined)[]) => {
+		if (typeof path === 'string') {
+			segments = [path, ...segments];
+		} else {
+			segments = [...new Pointer(path.path).segments, ...segments];
+		}
+
+		const stringSegments = segments.filter<string>(isString);
+		const hasMultipleSegments = stringSegments.length > 1;
+		const pointer = new Pointer(hasMultipleSegments ? stringSegments : stringSegments[0] || '');
+
+		return {
+			path: pointer.path,
+			state: {} as T,
+			value: pointer.get({} as T)
+		};
+	};
+
+	private createWorker() {
+		return new Worker('/dist/worker/src/stores/WorkerStore.js');
+	}
+}
+
 export default Store;
